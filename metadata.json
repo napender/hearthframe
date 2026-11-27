@@ -1,0 +1,8 @@
+{
+  "name": "HearthFrame",
+  "description": "Private home photo slideshow and gallery frame engineered for legacy Android tablets and low-bandwidth networks.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

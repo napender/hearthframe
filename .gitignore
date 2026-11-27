@@ -1,0 +1,22 @@
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+
+# Environment files (only .env.example template is tracked)
+.env*
+!.env.example
+
+# Local runtime gallery cache, credentials store, and uploaded photos
+data/
+
+# Certificates, private keys, and service-account credential files
+*.pem
+*.key
+*.p12
+*.pfx
+*.secret
+*credentials*.json
+service-account*.json
