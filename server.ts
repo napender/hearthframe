@@ -875,6 +875,19 @@ function getWorkspaceAccount(workspaceId: string): WorkspaceAccount | null {
 
 const sessions = new Map<string, SessionInfo>();
 const revokedTokens = new Set<string>();
+const MAX_TRACKED_SESSIONS = 5000;
+const MAX_REVOKED_TOKENS = 5000;
+
+function addRevokedToken(token: string): void {
+  if (!token) return;
+  if (revokedTokens.size >= MAX_REVOKED_TOKENS) {
+    const oldest = revokedTokens.values().next().value;
+    if (oldest) {
+      revokedTokens.delete(oldest);
+    }
+  }
+  revokedTokens.add(token);
+}
 
 const loginAttempts = new Map<string, { count: number; resetAt: number }>();
 const RATE_LIMIT_WINDOW_MS = 1000 * 60 * 10;
@@ -1177,6 +1190,20 @@ function createSignedSession(
     createdAt: now,
     expiresAt,
   };
+  if (sessions.size >= MAX_TRACKED_SESSIONS) {
+    const nowTs = Date.now();
+    for (const [existingToken, existingInfo] of sessions.entries()) {
+      if (existingInfo.expiresAt < nowTs) {
+        sessions.delete(existingToken);
+      }
+    }
+    if (sessions.size >= MAX_TRACKED_SESSIONS) {
+      const oldestKey = sessions.keys().next().value;
+      if (oldestKey) {
+        sessions.delete(oldestKey);
+      }
+    }
+  }
   sessions.set(token, info);
   return info;
 }
@@ -1266,7 +1293,7 @@ function revokeWorkspaceSessions(
   for (const [token, info] of sessions.entries()) {
     if (info.workspaceId === workspaceId && (!role || info.role === role)) {
       sessions.delete(token);
-      revokedTokens.add(token);
+      addRevokedToken(token);
     }
   }
 }
@@ -1374,19 +1401,11 @@ function verifySameOriginForCookieMutation(req: Request): boolean {
 function resolveRequestSession(req: Request): SessionInfo | null {
   const bearer = extractBearerToken(req);
   if (bearer) {
-    const mem = sessions.get(bearer);
-    if (mem && Date.now() <= mem.expiresAt && !revokedTokens.has(bearer)) {
-      const account = getWorkspaceAccount(mem.workspaceId);
-      if (account) {
-        return mem;
-      }
-      sessions.delete(bearer);
-      return null;
-    }
     const verifiedBearer = verifySignedSessionToken(bearer);
     if (verifiedBearer) {
       return verifiedBearer;
     }
+    sessions.delete(bearer);
   }
 
   const cookieToken = parseCookieHeader(req, SESSION_COOKIE_NAME);
@@ -2085,10 +2104,16 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
 });
 
 app.post('/api/auth/logout', (req: Request, res: Response) => {
+  const hasBearer = Boolean(extractBearerToken(req));
+  const hasCookie = Boolean(parseCookieHeader(req, SESSION_COOKIE_NAME));
+  if (!hasBearer && hasCookie && !verifySameOriginForCookieMutation(req)) {
+    res.status(403).json({ error: 'Cross-site request blocked.' });
+    return;
+  }
   const info = resolveRequestSession(req);
   if (info && info.token) {
     sessions.delete(info.token);
-    revokedTokens.add(info.token);
+    addRevokedToken(info.token);
   }
   clearSessionCookie(req, res);
   res.json({ ok: true });

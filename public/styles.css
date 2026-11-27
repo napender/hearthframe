@@ -1081,6 +1081,252 @@ body.hf-is-fullscreen .hf-stage-viewport {
   font-size: 14px;
 }
 
+.hf-file-input-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+
+.hf-dropzone {
+  position: relative;
+  border: 2px dashed #cbbba6;
+  border-radius: 10px;
+  background-color: #faf8f4;
+  padding: 26px 20px;
+  text-align: center;
+  cursor: pointer;
+  margin-bottom: 16px;
+  -webkit-transition: border-color 0.16s ease, background-color 0.16s ease;
+  transition: border-color 0.16s ease, background-color 0.16s ease;
+}
+
+.hf-dropzone:hover,
+.hf-dropzone:focus {
+  border-color: #c2591a;
+  background-color: #fff6ec;
+  outline: none;
+}
+
+.hf-dropzone-active {
+  border-color: #c2591a;
+  background-color: #ffefe0;
+}
+
+.hf-dropzone-disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.hf-dropzone-disabled:hover,
+.hf-dropzone-disabled:focus {
+  border-color: #cbbba6;
+  background-color: #faf8f4;
+}
+
+.hf-dropzone-icon {
+  margin-bottom: 8px;
+  line-height: 1;
+}
+
+.hf-dropzone-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #1c1814;
+  margin-bottom: 4px;
+}
+
+.hf-dropzone-sub {
+  font-size: 13px;
+  color: #5e564d;
+  margin-bottom: 14px;
+}
+
+.hf-dropzone-btn {
+  min-height: 40px;
+}
+
+/* Queued Photos Preview List */
+.hf-upload-queue {
+  border: 1px solid #e4ddd2;
+  border-radius: 8px;
+  background-color: #fcfbf9;
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+
+.hf-queue-head {
+  padding: 10px 14px;
+  background-color: #f6f2eb;
+  border-bottom: 1px solid #e4ddd2;
+}
+
+.hf-queue-summary {
+  float: left;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1c1814;
+  line-height: 28px;
+}
+
+.hf-queue-clear {
+  float: right;
+  background: transparent;
+  border: 0;
+  padding: 4px 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #b42318;
+  cursor: pointer;
+  line-height: 20px;
+}
+
+.hf-queue-clear:hover {
+  text-decoration: underline;
+}
+
+.hf-queue-clear:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.hf-queue-list {
+  max-height: 230px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.hf-queue-item {
+  padding: 8px 14px;
+  border-bottom: 1px solid #efeae1;
+}
+
+.hf-queue-item:last-child {
+  border-bottom: 0;
+}
+
+.hf-queue-thumb {
+  float: left;
+  width: 48px;
+  height: 36px;
+  border-radius: 4px;
+  overflow: hidden;
+  background-color: #e9e4db;
+  margin-right: 12px;
+  text-align: center;
+  line-height: 36px;
+}
+
+.hf-queue-thumb img {
+  display: block;
+  width: 48px;
+  height: 36px;
+  object-fit: cover;
+}
+
+.hf-queue-thumb-fallback {
+  font-size: 10px;
+  font-weight: 700;
+  color: #6b6359;
+}
+
+.hf-queue-remove {
+  float: right;
+  background: transparent;
+  border: 1px solid #d9d1c4;
+  border-radius: 5px;
+  padding: 5px 10px;
+  margin-top: 3px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #544d44;
+  cursor: pointer;
+}
+
+.hf-queue-remove:hover {
+  border-color: #b42318;
+  color: #b42318;
+  background-color: #fef3f2;
+}
+
+.hf-queue-remove:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.hf-queue-info {
+  margin-left: 60px;
+  margin-right: 82px;
+  padding-top: 1px;
+}
+
+.hf-queue-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1c1814;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hf-queue-size {
+  font-size: 12px;
+  color: #6b6359;
+  font-family: "Courier New", Courier, monospace;
+}
+
+/* Batch Upload Progress Bar */
+.hf-upload-progress {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  border: 1px solid #efc79c;
+  background-color: #fff6ec;
+}
+
+.hf-upload-progress-text {
+  font-size: 13px;
+  font-weight: 600;
+  color: #7c3510;
+  margin-bottom: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hf-upload-progress-track {
+  width: 100%;
+  height: 8px;
+  border-radius: 4px;
+  background-color: #f3dcc2;
+  overflow: hidden;
+}
+
+.hf-upload-progress-fill {
+  height: 8px;
+  background-color: #c2591a;
+  width: 0%;
+  -webkit-transition: width 0.2s ease;
+  transition: width 0.2s ease;
+}
+
+.hf-upload-meta-row {
+  margin-left: -10px;
+  margin-right: -10px;
+}
+
+.hf-upload-meta-col {
+  float: left;
+  width: 50%;
+  padding-left: 10px;
+  padding-right: 10px;
+  margin-bottom: 14px;
+}
+
 .hf-gallery-grid {
   margin-left: -10px;
   margin-right: -10px;
@@ -1543,8 +1789,10 @@ body.hf-is-fullscreen .hf-stage-viewport {
     width: 50%;
   }
 
-  .hf-upload-col {
+  .hf-upload-col,
+  .hf-upload-meta-col {
     width: 100%;
+    float: none;
   }
 
   .hf-toolbar-right {

@@ -144,6 +144,13 @@
     adminError: '',
     uploadStatus: '',
     uploading: false,
+    uploadCurrentIndex: 0,
+    uploadTotalCount: 0,
+    uploadTitleInput: '',
+    uploadCaptionInput: '',
+    uploadDropWarning: '',
+    uploadSelectedProfileIds: null,
+    pendingUploadFiles: [],
     editingSlideId: null,
     confirmDeleteId: null,
     // TV / Tablet QR + 6-Char PIN Pairing state
@@ -1569,6 +1576,12 @@
     state.portalErrorAdmin = '';
     state.portalSignupError = '';
     state.portalErrorVisitor = '';
+    clearPendingUploadFiles();
+    state.uploadTitleInput = '';
+    state.uploadCaptionInput = '';
+    state.uploadSelectedProfileIds = null;
+    state.uploadCurrentIndex = 0;
+    state.uploadTotalCount = 0;
     state.adminNotice = '';
     state.adminError = '';
     state.pairError = '';
@@ -3357,7 +3370,28 @@
       uploadPanel.appendChild(capAlert);
     }
 
-    if (state.uploadStatus) {
+    if (state.uploadDropWarning) {
+      var warnMsg = el('div', 'hf-alert hf-alert-info', state.uploadDropWarning);
+      warnMsg.style.marginTop = '14px';
+      uploadPanel.appendChild(warnMsg);
+    }
+
+    if (state.uploading && state.uploadStatus) {
+      var progBox = el('div', 'hf-upload-progress');
+      progBox.appendChild(el('div', 'hf-upload-progress-text', state.uploadStatus));
+      var progTrack = el('div', 'hf-upload-progress-track');
+      var progFill = el('div', 'hf-upload-progress-fill');
+      var pct = 0;
+      if (state.uploadTotalCount > 0) {
+        pct = Math.round((state.uploadCurrentIndex / state.uploadTotalCount) * 100);
+        if (pct < 4) pct = 4;
+        if (pct > 100) pct = 100;
+      }
+      progFill.style.width = pct + '%';
+      progTrack.appendChild(progFill);
+      progBox.appendChild(progTrack);
+      uploadPanel.appendChild(progBox);
+    } else if (state.uploadStatus) {
       var upMsg = el('div', 'hf-alert hf-alert-info', state.uploadStatus);
       upMsg.style.marginTop = '14px';
       uploadPanel.appendChild(upMsg);
@@ -3366,32 +3400,303 @@
     var uploadForm = el('form');
     uploadForm.style.marginTop = '16px';
 
-    var upRow = el('div', 'hf-upload-row hf-clearfix');
-
-    var colFile = el('div', 'hf-upload-col');
-    colFile.appendChild(el('label', 'hf-label', 'Select Photo Files'));
-    var fileInput = el('input', 'hf-file-input');
+    // Hidden native file input (multi-select fallback + click target for dropzone)
+    var fileInput = el('input', 'hf-file-input-hidden');
     fileInput.type = 'file';
     fileInput.accept = 'image/*';
     fileInput.multiple = true;
-    colFile.appendChild(fileInput);
-    upRow.appendChild(colFile);
+    fileInput.disabled = state.uploading || atPhotoLimit;
+    fileInput.onchange = function () {
+      if (fileInput.files && fileInput.files.length) {
+        addFilesToUploadQueue(fileInput.files);
+      }
+      try {
+        fileInput.value = '';
+      } catch (resetErr) {
+        // Ignore on legacy browsers that disallow resetting file input value
+      }
+    };
+    uploadForm.appendChild(fileInput);
 
-    var colTitle = el('div', 'hf-upload-col');
+    // Drag & Drop Zone (with full click + keyboard fallback for legacy tablets/mobile)
+    var dropDisabled = state.uploading || atPhotoLimit;
+    var dropzone = el(
+      'div',
+      'hf-dropzone' + (dropDisabled ? ' hf-dropzone-disabled' : '')
+    );
+    dropzone.setAttribute('role', 'button');
+    dropzone.setAttribute('tabindex', dropDisabled ? '-1' : '0');
+    dropzone.setAttribute(
+      'aria-label',
+      'Drag and drop multiple photos here or click to browse files'
+    );
+
+    if (document.createElementNS) {
+      var iconWrap = el('div', 'hf-dropzone-icon');
+      var dzSvg = svgEl('svg', {
+        width: '40',
+        height: '40',
+        viewBox: '0 0 40 40',
+        'aria-hidden': 'true',
+        focusable: 'false'
+      });
+      dzSvg.appendChild(
+        svgEl('rect', {
+          x: '4',
+          y: '10',
+          width: '26',
+          height: '20',
+          rx: '3',
+          fill: '#fff8ef',
+          stroke: '#c2591a',
+          'stroke-width': '2'
+        })
+      );
+      dzSvg.appendChild(
+        svgEl('path', {
+          d: 'M10 10V7a2 2 0 0 1 2-2h22a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2h-4',
+          fill: 'none',
+          stroke: '#d6a478',
+          'stroke-width': '2',
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round'
+        })
+      );
+      dzSvg.appendChild(
+        svgEl('circle', {
+          cx: '12',
+          cy: '17',
+          r: '2.2',
+          fill: '#e88b3a'
+        })
+      );
+      dzSvg.appendChild(
+        svgEl('path', {
+          d: 'M6 27l6-6 5 4.5 4.5-4.5 6.5 6',
+          fill: 'none',
+          stroke: '#c2591a',
+          'stroke-width': '2',
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round'
+        })
+      );
+      iconWrap.appendChild(dzSvg);
+      dropzone.appendChild(iconWrap);
+    }
+
+    var dzTitle = el(
+      'div',
+      'hf-dropzone-title',
+      atPhotoLimit
+        ? 'Photo library limit reached'
+        : state.uploading
+          ? 'Uploading photos...'
+          : 'Drag & drop multiple photos here'
+    );
+    dropzone.appendChild(dzTitle);
+
+    var remainingSlots =
+      photoLimit !== null
+        ? Math.max(0, photoLimit - state.slides.length - state.pendingUploadFiles.length)
+        : null;
+    var dzSubText = 'JPG, PNG, GIF, or WebP  \u00B7  Automatically resized before upload';
+    if (remainingSlots !== null && !atPhotoLimit) {
+      dzSubText +=
+        '  \u00B7  ' +
+        remainingSlots +
+        (remainingSlots === 1 ? ' slot remaining' : ' slots remaining');
+    }
+    dropzone.appendChild(el('div', 'hf-dropzone-sub', dzSubText));
+
+    var browseBtn = el(
+      'button',
+      'hf-btn hf-btn-secondary hf-dropzone-btn',
+      state.pendingUploadFiles.length > 0 ? 'Add More Photos' : 'Browse Photos'
+    );
+    browseBtn.type = 'button';
+    browseBtn.disabled = dropDisabled;
+    browseBtn.onclick = function (ev) {
+      if (ev && ev.stopPropagation) ev.stopPropagation();
+      if (!dropDisabled) {
+        fileInput.click();
+      }
+    };
+    dropzone.appendChild(browseBtn);
+
+    if (!dropDisabled) {
+      var dropDragDepth = 0;
+
+      dropzone.onclick = function () {
+        fileInput.click();
+      };
+
+      dropzone.onkeydown = function (ev) {
+        var key = ev ? ev.keyCode || ev.which : 0;
+        if (key === 13 || key === 32) {
+          if (ev && ev.preventDefault) ev.preventDefault();
+          fileInput.click();
+        }
+      };
+
+      dropzone.ondragenter = function (ev) {
+        if (ev && ev.preventDefault) ev.preventDefault();
+        if (ev && ev.stopPropagation) ev.stopPropagation();
+        dropDragDepth++;
+        if (dropzone.className.indexOf('hf-dropzone-active') === -1) {
+          dropzone.className = 'hf-dropzone hf-dropzone-active';
+        }
+        dzTitle.textContent = 'Drop photos to add them to the queue';
+      };
+
+      dropzone.ondragover = function (ev) {
+        if (ev && ev.preventDefault) ev.preventDefault();
+        if (ev && ev.stopPropagation) ev.stopPropagation();
+        if (ev && ev.dataTransfer) {
+          try {
+            ev.dataTransfer.dropEffect = 'copy';
+          } catch (deErr) {
+            // Ignore on older browsers
+          }
+        }
+      };
+
+      dropzone.ondragleave = function (ev) {
+        if (ev && ev.preventDefault) ev.preventDefault();
+        if (ev && ev.stopPropagation) ev.stopPropagation();
+        dropDragDepth--;
+        if (dropDragDepth <= 0) {
+          dropDragDepth = 0;
+          dropzone.className = 'hf-dropzone';
+          dzTitle.textContent = 'Drag & drop multiple photos here';
+        }
+      };
+
+      dropzone.ondrop = function (ev) {
+        if (ev && ev.preventDefault) ev.preventDefault();
+        if (ev && ev.stopPropagation) ev.stopPropagation();
+        dropDragDepth = 0;
+        dropzone.className = 'hf-dropzone';
+        dzTitle.textContent = 'Drag & drop multiple photos here';
+        var dt = ev ? ev.dataTransfer : null;
+        if (dt && dt.files && dt.files.length) {
+          addFilesToUploadQueue(dt.files);
+        }
+      };
+
+      // Guard the surrounding upload panel so slightly missed drops don't navigate away
+      uploadPanel.ondragover = function (ev) {
+        if (ev && ev.preventDefault) ev.preventDefault();
+      };
+      uploadPanel.ondrop = function (ev) {
+        if (ev && ev.preventDefault) ev.preventDefault();
+        var dt = ev ? ev.dataTransfer : null;
+        if (dt && dt.files && dt.files.length && !state.uploading && !atPhotoLimit) {
+          addFilesToUploadQueue(dt.files);
+        }
+      };
+    }
+
+    uploadForm.appendChild(dropzone);
+
+    // Queued Photos Preview List
+    if (state.pendingUploadFiles.length > 0) {
+      var totalQueueBytes = 0;
+      for (var qb = 0; qb < state.pendingUploadFiles.length; qb++) {
+        totalQueueBytes += state.pendingUploadFiles[qb].file.size || 0;
+      }
+
+      var queueBox = el('div', 'hf-upload-queue');
+      var queueHead = el('div', 'hf-queue-head hf-clearfix');
+      queueHead.appendChild(
+        el(
+          'span',
+          'hf-queue-summary',
+          state.pendingUploadFiles.length +
+            (state.pendingUploadFiles.length === 1
+              ? ' photo ready to upload'
+              : ' photos ready to upload') +
+            '  \u00B7  ' +
+            formatBytes(totalQueueBytes)
+        )
+      );
+
+      var clearQueueBtn = el('button', 'hf-queue-clear', 'Clear All');
+      clearQueueBtn.type = 'button';
+      clearQueueBtn.disabled = state.uploading;
+      clearQueueBtn.onclick = function () {
+        clearPendingUploadFiles();
+        render();
+      };
+      queueHead.appendChild(clearQueueBtn);
+      queueBox.appendChild(queueHead);
+
+      var queueList = el('div', 'hf-queue-list');
+      for (var qi = 0; qi < state.pendingUploadFiles.length; qi++) {
+        (function (qItem) {
+          var row = el('div', 'hf-queue-item hf-clearfix');
+
+          var thumbWrap = el('div', 'hf-queue-thumb');
+          if (qItem.previewUrl) {
+            var qImg = el('img');
+            qImg.src = qItem.previewUrl;
+            qImg.alt = qItem.file.name;
+            thumbWrap.appendChild(qImg);
+          } else {
+            thumbWrap.appendChild(el('span', 'hf-queue-thumb-fallback', 'IMG'));
+          }
+          row.appendChild(thumbWrap);
+
+          var remBtn = el('button', 'hf-queue-remove', 'Remove');
+          remBtn.type = 'button';
+          remBtn.disabled = state.uploading;
+          remBtn.setAttribute('aria-label', 'Remove ' + qItem.file.name);
+          remBtn.onclick = function () {
+            removePendingUploadFile(qItem.id);
+          };
+          row.appendChild(remBtn);
+
+          var infoWrap = el('div', 'hf-queue-info');
+          infoWrap.appendChild(el('div', 'hf-queue-name', qItem.file.name));
+          infoWrap.appendChild(
+            el('div', 'hf-queue-size', formatBytes(qItem.file.size || 0))
+          );
+          row.appendChild(infoWrap);
+
+          queueList.appendChild(row);
+        })(state.pendingUploadFiles[qi]);
+      }
+      queueBox.appendChild(queueList);
+      uploadForm.appendChild(queueBox);
+    }
+
+    // Optional Title & Caption row (2 columns)
+    var upRow = el('div', 'hf-upload-meta-row hf-clearfix');
+
+    var colTitle = el('div', 'hf-upload-meta-col');
     colTitle.appendChild(el('label', 'hf-label', 'Title (Optional)'));
     var titleInput = el('input', 'hf-input');
     titleInput.type = 'text';
     titleInput.maxLength = 80;
-    titleInput.placeholder = 'Defaults to file name';
+    titleInput.placeholder = 'Defaults to each photo file name';
+    titleInput.value = state.uploadTitleInput || '';
+    titleInput.disabled = state.uploading || atPhotoLimit;
+    titleInput.oninput = function () {
+      state.uploadTitleInput = titleInput.value;
+    };
     colTitle.appendChild(titleInput);
     upRow.appendChild(colTitle);
 
-    var colCap = el('div', 'hf-upload-col');
+    var colCap = el('div', 'hf-upload-meta-col');
     colCap.appendChild(el('label', 'hf-label', 'Caption (Optional)'));
     var capInput = el('input', 'hf-input');
     capInput.type = 'text';
     capInput.maxLength = 160;
-    capInput.placeholder = 'Short memory or location';
+    capInput.placeholder = 'Short memory or location (applied to batch)';
+    capInput.value = state.uploadCaptionInput || '';
+    capInput.disabled = state.uploading || atPhotoLimit;
+    capInput.oninput = function () {
+      state.uploadCaptionInput = capInput.value;
+    };
     colCap.appendChild(capInput);
     upRow.appendChild(colCap);
 
@@ -3403,46 +3708,68 @@
       var assignBox = el('div', 'hf-assign-box');
       assignBox.appendChild(el('div', 'hf-assign-title', 'Show Uploaded Photos On'));
       for (var p = 0; p < state.profiles.length; p++) {
-        var profItem = state.profiles[p];
-        var lbl = el('label', 'hf-assign-item');
-        var chk = el('input');
-        chk.type = 'checkbox';
-        chk.value = profItem.id;
-        chk.checked =
-          state.galleryFilterProfileId === 'all' ||
-          state.galleryFilterProfileId === profItem.id;
-        lbl.appendChild(chk);
-        lbl.appendChild(document.createTextNode(profItem.name));
-        assignBox.appendChild(lbl);
-        uploadProfileCheckboxes.push(chk);
+        (function (profItem) {
+          var lbl = el('label', 'hf-assign-item');
+          var chk = el('input');
+          chk.type = 'checkbox';
+          chk.value = profItem.id;
+          if (state.uploadSelectedProfileIds !== null) {
+            var matchedSel = false;
+            for (var sp = 0; sp < state.uploadSelectedProfileIds.length; sp++) {
+              if (state.uploadSelectedProfileIds[sp] === profItem.id) {
+                matchedSel = true;
+                break;
+              }
+            }
+            chk.checked = matchedSel;
+          } else {
+            chk.checked =
+              state.galleryFilterProfileId === 'all' ||
+              state.galleryFilterProfileId === profItem.id;
+          }
+          chk.disabled = state.uploading || atPhotoLimit;
+          chk.onchange = function () {
+            var nextIds = [];
+            for (var ci = 0; ci < uploadProfileCheckboxes.length; ci++) {
+              if (uploadProfileCheckboxes[ci].checked) {
+                nextIds.push(uploadProfileCheckboxes[ci].value);
+              }
+            }
+            state.uploadSelectedProfileIds = nextIds;
+          };
+          lbl.appendChild(chk);
+          lbl.appendChild(document.createTextNode(profItem.name));
+          assignBox.appendChild(lbl);
+          uploadProfileCheckboxes.push(chk);
+        })(state.profiles[p]);
       }
       uploadForm.appendChild(assignBox);
     }
 
-    var uploadBtn = el(
-      'button',
-      'hf-btn hf-btn-accent',
-      state.uploading
-        ? 'Optimizing & Uploading...'
-        : atPhotoLimit
-          ? 'Photo Limit Reached'
-          : 'Upload Selected Photos'
-    );
+    var queuedCount = state.pendingUploadFiles.length;
+    var uploadBtnLabel = state.uploading
+      ? 'Optimizing & Uploading...'
+      : atPhotoLimit
+        ? 'Photo Limit Reached'
+        : queuedCount > 0
+          ? 'Upload ' + queuedCount + (queuedCount === 1 ? ' Photo' : ' Photos')
+          : 'Upload Selected Photos';
+
+    var uploadBtn = el('button', 'hf-btn hf-btn-accent', uploadBtnLabel);
     uploadBtn.type = 'submit';
     uploadBtn.disabled = state.uploading || atPhotoLimit;
     uploadForm.appendChild(uploadBtn);
 
     uploadForm.onsubmit = function (e) {
       if (e && e.preventDefault) e.preventDefault();
-      var files = fileInput.files;
-      if (!files || !files.length) {
-        state.adminError = 'Please choose at least one image file first.';
+      if (!state.pendingUploadFiles.length) {
+        state.adminError = 'Drag and drop photos above or click Browse Photos first.';
         render();
         return false;
       }
       var list = [];
-      for (var i = 0; i < files.length; i++) {
-        list.push(files[i]);
+      for (var i = 0; i < state.pendingUploadFiles.length; i++) {
+        list.push(state.pendingUploadFiles[i].file);
       }
       var chosenProfileIds = [];
       for (var c = 0; c < uploadProfileCheckboxes.length; c++) {
@@ -3450,6 +3777,7 @@
           chosenProfileIds.push(uploadProfileCheckboxes[c].value);
         }
       }
+      state.uploadDropWarning = '';
       uploadBatchSequential(
         list,
         0,
@@ -3457,7 +3785,10 @@
         capInput.value,
         chosenProfileIds,
         0,
-        0
+        0,
+        0,
+        0,
+        ''
       );
       return false;
     };
@@ -3550,6 +3881,139 @@
     main.appendChild(grid);
   }
 
+  function isSupportedImageFile(file) {
+    if (!file) return false;
+    if (file.type && file.type.indexOf('image/') === 0) {
+      return true;
+    }
+    var name = file.name ? file.name.toLowerCase() : '';
+    return /\.(jpe?g|png|gif|webp|bmp)$/.test(name);
+  }
+
+  function createUploadPreviewUrl(file) {
+    var urlApi = window.URL || window.webkitURL;
+    if (!urlApi || !urlApi.createObjectURL) return null;
+    try {
+      return urlApi.createObjectURL(file);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function revokeUploadPreviewUrl(url) {
+    if (!url) return;
+    var urlApi = window.URL || window.webkitURL;
+    if (urlApi && urlApi.revokeObjectURL) {
+      try {
+        urlApi.revokeObjectURL(url);
+      } catch (e) {
+        // Ignore cleanup error
+      }
+    }
+  }
+
+  function clearPendingUploadFiles() {
+    for (var i = 0; i < state.pendingUploadFiles.length; i++) {
+      revokeUploadPreviewUrl(state.pendingUploadFiles[i].previewUrl);
+    }
+    state.pendingUploadFiles = [];
+    state.uploadDropWarning = '';
+  }
+
+  function removePendingUploadFile(itemId) {
+    var next = [];
+    for (var i = 0; i < state.pendingUploadFiles.length; i++) {
+      if (state.pendingUploadFiles[i].id === itemId) {
+        revokeUploadPreviewUrl(state.pendingUploadFiles[i].previewUrl);
+      } else {
+        next.push(state.pendingUploadFiles[i]);
+      }
+    }
+    state.pendingUploadFiles = next;
+    if (next.length === 0) {
+      state.uploadDropWarning = '';
+    }
+    render();
+  }
+
+  function addFilesToUploadQueue(fileList) {
+    if (!fileList || !fileList.length) return;
+    var photoLimit = state.quota && state.quota.limit ? state.quota.limit : null;
+    var maxAddable =
+      photoLimit !== null
+        ? Math.max(0, photoLimit - state.slides.length - state.pendingUploadFiles.length)
+        : 1000;
+
+    var skippedNonImage = 0;
+    var skippedDuplicate = 0;
+    var skippedLimit = 0;
+    var addedCount = 0;
+
+    for (var i = 0; i < fileList.length; i++) {
+      var f = fileList[i];
+      if (!isSupportedImageFile(f)) {
+        skippedNonImage++;
+        continue;
+      }
+      var isDup = false;
+      for (var j = 0; j < state.pendingUploadFiles.length; j++) {
+        var existing = state.pendingUploadFiles[j].file;
+        if (
+          existing.name === f.name &&
+          existing.size === f.size &&
+          existing.lastModified === f.lastModified
+        ) {
+          isDup = true;
+          break;
+        }
+      }
+      if (isDup) {
+        skippedDuplicate++;
+        continue;
+      }
+      if (addedCount >= maxAddable) {
+        skippedLimit++;
+        continue;
+      }
+      state.pendingUploadFiles.push({
+        id: 'q_' + Date.now() + '_' + Math.floor(Math.random() * 100000) + '_' + i,
+        file: f,
+        previewUrl: createUploadPreviewUrl(f)
+      });
+      addedCount++;
+    }
+
+    var notes = [];
+    if (skippedNonImage > 0) {
+      notes.push(
+        skippedNonImage +
+          (skippedNonImage === 1
+            ? ' non-image file skipped'
+            : ' non-image files skipped')
+      );
+    }
+    if (skippedDuplicate > 0) {
+      notes.push(
+        skippedDuplicate +
+          (skippedDuplicate === 1
+            ? ' duplicate skipped'
+            : ' duplicates skipped')
+      );
+    }
+    if (skippedLimit > 0 && photoLimit !== null) {
+      notes.push(
+        skippedLimit +
+          (skippedLimit === 1
+            ? ' photo skipped (reached ' + photoLimit + '-photo limit)'
+            : ' photos skipped (reached ' + photoLimit + '-photo limit)')
+      );
+    }
+
+    state.adminError = '';
+    state.uploadDropWarning = notes.length > 0 ? notes.join('  \u00B7  ') + '.' : '';
+    render();
+  }
+
   function uploadBatchSequential(
     files,
     index,
@@ -3557,41 +4021,76 @@
     customCaption,
     selectedProfileIds,
     totalOrig,
-    totalOpt
+    totalOpt,
+    succeededCount,
+    skippedCount,
+    lastErrMsg
   ) {
     if (index === 0) {
       state.uploading = true;
+      state.uploadTotalCount = files.length;
+      state.uploadCurrentIndex = 0;
       state.adminError = '';
       state.adminNotice = '';
     }
     if (index >= files.length) {
       state.uploading = false;
       state.uploadStatus = '';
-      var savings =
-        totalOrig > 0 && totalOpt > 0
-          ? ' (' + formatBytes(totalOrig) + ' \u2192 ' + formatBytes(totalOpt) + ' optimized)'
-          : '';
-      state.adminNotice =
-        'Uploaded ' +
-        files.length +
-        (files.length === 1 ? ' photo' : ' photos') +
-        savings +
-        '.';
-      loadAdminData();
+      state.uploadCurrentIndex = 0;
+      state.uploadTotalCount = 0;
+      clearPendingUploadFiles();
+      state.uploadTitleInput = '';
+      state.uploadCaptionInput = '';
+
+      if (succeededCount > 0) {
+        var savings =
+          totalOrig > 0 && totalOpt > 0
+            ? ' (' + formatBytes(totalOrig) + ' \u2192 ' + formatBytes(totalOpt) + ' optimized)'
+            : '';
+        state.adminNotice =
+          'Uploaded ' +
+          succeededCount +
+          (succeededCount === 1 ? ' photo' : ' photos') +
+          savings +
+          (skippedCount > 0
+            ? '. ' + skippedCount + (skippedCount === 1 ? ' photo skipped.' : ' photos skipped.')
+            : '.');
+        if (skippedCount > 0 && lastErrMsg) {
+          state.adminError = lastErrMsg;
+        }
+        loadAdminData();
+      } else {
+        state.adminError = lastErrMsg || 'No photos could be uploaded.';
+        render();
+      }
       return;
     }
 
     var file = files[index];
+    state.uploadCurrentIndex = index + 1;
     state.uploadStatus =
-      'Optimizing photo ' + (index + 1) + ' of ' + files.length + ' (' + file.name + ')...';
+      'Optimizing & uploading photo ' +
+      (index + 1) +
+      ' of ' +
+      files.length +
+      '  \u00B7  ' +
+      file.name;
     render();
 
     prepareImageFile(file, function (prepErr, result) {
       if (prepErr || !result) {
-        state.uploading = false;
-        state.uploadStatus = '';
-        state.adminError = prepErr || 'Failed to prepare image.';
-        render();
+        uploadBatchSequential(
+          files,
+          index + 1,
+          customTitle,
+          customCaption,
+          selectedProfileIds,
+          totalOrig,
+          totalOpt,
+          succeededCount,
+          skippedCount + 1,
+          prepErr || 'Could not process ' + file.name
+        );
         return;
       }
 
@@ -3615,10 +4114,37 @@
         },
         function (apiErr) {
           if (apiErr) {
-            state.uploading = false;
-            state.uploadStatus = '';
-            state.adminError = apiErr;
-            render();
+            // Stop immediately if photo limit or authentication error occurred
+            if (
+              apiErr.toLowerCase().indexOf('limit') !== -1 ||
+              apiErr.toLowerCase().indexOf('auth') !== -1
+            ) {
+              uploadBatchSequential(
+                files,
+                files.length,
+                customTitle,
+                customCaption,
+                selectedProfileIds,
+                totalOrig,
+                totalOpt,
+                succeededCount,
+                skippedCount + (files.length - index),
+                apiErr
+              );
+              return;
+            }
+            uploadBatchSequential(
+              files,
+              index + 1,
+              customTitle,
+              customCaption,
+              selectedProfileIds,
+              totalOrig,
+              totalOpt,
+              succeededCount,
+              skippedCount + 1,
+              apiErr
+            );
             return;
           }
           uploadBatchSequential(
@@ -3628,7 +4154,10 @@
             customCaption,
             selectedProfileIds,
             totalOrig + result.originalBytes,
-            totalOpt + result.optimizedBytes
+            totalOpt + result.optimizedBytes,
+            succeededCount + 1,
+            skippedCount,
+            lastErrMsg
           );
         }
       );

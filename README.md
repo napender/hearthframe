@@ -37,6 +37,7 @@ A lightweight, multi-user photo slideshow and gallery web app engineered for rep
 - **Persistent 30-Day Display Sessions** — Paired or signed-in Frame Display screens stay authenticated for **30 days** via a workspace-bound `HttpOnly` signed cookie and automatically resume the last Display Profile opened on that browser. Admin logins use a shorter browser-session cookie (up to 12 hours) for household security.
 - **2-Layer Keep Screen Awake** — Keeps tablet screens from sleeping during slideshows using the native Screen Wake Lock API (Layer 1) with an automatic invisible looping video fallback (Layer 2) for older Android browsers.
 - **Persistent Cloudflare R2 Storage (`$0` Egress)** — Stores photos, thumbnails, profiles, and accounts in isolated Cloudflare R2 prefixes using a custom zero-SDK SigV4 client, with seamless local filesystem fallback for local development.
+- **Bulk Drag-and-Drop Photo Upload** — Drag and drop multiple photos at once onto **Admin → Photos** (with additive multi-drop queuing, instant thumbnail previews, per-file removal, automatic client-side optimization, a live upload progress bar, and full click-to-browse fallback for mobile and legacy tablets).
 - **Client-Side Upload Optimization** — Automatically resizes photos in the browser before uploading (producing a display-sized JPEG + lightweight thumbnail) to keep uploads fast and tablet memory usage low.
 
 ---
@@ -376,4 +377,4 @@ Planned improvements for future releases:
 
 - [ ] **Shuffle Order** — Optional per-Display-Profile shuffle toggle to randomize photo order automatically so wall-mounted frames feel fresh every day instead of repeating the same sequence.
 - [ ] **Quiet / Night Dimming Schedule** — Configurable bedtime window per Display Profile (e.g., `11:00 PM – 7:00 AM`) that automatically dims or darkens the screen overnight for bedroom tablets and living room TVs.
-- [ ] **Bulk Photo Upload & Multi-Select Delete** — Select and upload multiple photos in one batch with a live progress queue, plus multi-select checkboxes in **Admin → Photos** for quick library cleanup and profile assignment.
+- [ ] **Multi-Select Delete & Bulk Profile Assignment** — Multi-select checkboxes in **Admin → Photos** for quick batch cleanup and assigning multiple existing photos to Display Profiles at once.
